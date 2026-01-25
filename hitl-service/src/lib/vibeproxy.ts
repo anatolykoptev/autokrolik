@@ -29,9 +29,10 @@ export const VIBEPROXY_MODELS = {
   SONNET: 'gemini-claude-sonnet-4-5-thinking',
   SONNET_FAST: 'gemini-claude-sonnet-4-5',
 
-  // Gemini models
-  FLASH: 'gemini-2.0-flash-exp',
-  PRO: 'gemini-2.0-pro-exp',
+  // Gemini models (updated to actual VibeProxy models)
+  FLASH: 'gemini-2.5-flash',
+  FLASH_LITE: 'gemini-2.5-flash-lite',
+  PRO: 'gemini-3-pro-preview',
   GEMINI_3_PRO: 'gemini-3-pro-image-preview',
 } as const
 

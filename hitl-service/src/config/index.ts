@@ -17,7 +17,7 @@ const ConfigSchema = z.object({
     baseUrl: z.string().default('http://localhost:8318/v1'),
     apiKey: z.string().default('sk-vibeproxy-dummy'),
     executionModel: z.string().default('gemini-claude-sonnet-4-5-thinking'),
-    classificationModel: z.string().default('gemini-2.0-flash-exp'),
+    classificationModel: z.string().default('gemini-2.5-flash'),
     reasoningModel: z.string().default('gemini-claude-opus-4-5-thinking'),
   }),
 

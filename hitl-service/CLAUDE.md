@@ -49,10 +49,37 @@ START → entry → classify_tier
 | Path | Description |
 |------|-------------|
 | `src/types/` | Zod schemas & TypeScript types |
+| `src/lib/vibeproxy.ts` | VibeProxy integration for LangChain |
 | `src/graphs/state.ts` | LangGraph state annotation |
 | `src/graphs/hotl-graph.ts` | Main graph builder |
 | `src/graphs/nodes/` | Individual node implementations |
 | `prisma/schema.prisma` | Database schema |
+
+---
+
+## VibeProxy Integration
+
+Uses local VibeProxy server (`http://localhost:8318`) for OpenAI-compatible API:
+
+| Model | Alias | Use Case |
+|-------|-------|----------|
+| `gemini-claude-sonnet-4-5-thinking` | `sonnet` | Execution |
+| `gemini-claude-opus-4-5-thinking` | `opus` | Reasoning |
+| `gemini-2.0-flash-exp` | `flash` | Classification |
+
+```typescript
+import { createVibeProxyModel, createExecutionModel } from './lib/vibeproxy.js'
+
+// Quick usage
+const model = createVibeProxyModel({ model: 'sonnet' })
+
+// Specialized models
+const classificationModel = createClassificationModel() // flash
+const executionModel = createExecutionModel()           // sonnet
+const reasoningModel = createReasoningModel()           // opus
+```
+
+Antigravity models (Claude via Google) are FREE.
 
 ---
 

@@ -1,9 +1,9 @@
-import { ChatOpenAI } from '@langchain/openai'
 import { ulid } from 'ulid'
 import type { HOTLState } from '../state.js'
 import type { TaskTier } from '../../types/task.js'
 import type { GraphCheckpoint } from '../../types/graph.js'
 import { DEFAULT_TIER_CONFIGS } from '../../types/task.js'
+import { createClassificationModel, VIBEPROXY_MODELS } from '../../lib/vibeproxy.js'
 
 const CLASSIFICATION_PROMPT = `You are a task classification system for Human-on-the-Loop AI automation.
 
@@ -61,10 +61,8 @@ interface ClassificationResult {
 export async function classifyTierNode(
   state: HOTLState
 ): Promise<Partial<HOTLState>> {
-  const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
-    temperature: 0,
-  })
+  // Use VibeProxy flash model for fast classification
+  const model = createClassificationModel()
 
   const prompt = CLASSIFICATION_PROMPT.replace('{{taskType}}', state.taskType)
     .replace('{{input}}', JSON.stringify(state.input, null, 2))
@@ -111,7 +109,7 @@ export async function classifyTierNode(
       },
       metadata: {
         classificationTimestamp: Date.now(),
-        classificationModel: 'gpt-4o-mini',
+        classificationModel: VIBEPROXY_MODELS.FLASH,
       },
     }
   } catch (error) {

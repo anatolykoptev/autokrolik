@@ -1,8 +1,8 @@
-import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { ulid } from 'ulid'
 import type { HOTLState } from '../state.js'
 import type { GraphCheckpoint, ToolCallRequest } from '../../types/graph.js'
+import { createExecutionModel, VIBEPROXY_MODELS } from '../../lib/vibeproxy.js'
 
 const EXECUTION_SYSTEM_PROMPT = `You are an AI agent executing tasks in a Human-on-the-Loop system.
 
@@ -50,10 +50,8 @@ interface ExecutionResult {
 export async function aiExecuteNode(
   state: HOTLState
 ): Promise<Partial<HOTLState>> {
-  const model = new ChatOpenAI({
-    modelName: 'gpt-4o',
-    temperature: 0.1,
-  })
+  // Use VibeProxy sonnet model for execution
+  const model = createExecutionModel()
 
   const systemPrompt = EXECUTION_SYSTEM_PROMPT
     .replace('{{context}}', JSON.stringify(state.contextData, null, 2))
@@ -103,7 +101,7 @@ export async function aiExecuteNode(
         executionTimestamp: Date.now(),
       },
       metadata: {
-        executionModel: 'gpt-4o',
+        executionModel: VIBEPROXY_MODELS.SONNET,
         shouldEscalate: result.shouldEscalate,
         escalationReason: result.escalationReason,
       },

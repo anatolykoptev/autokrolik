@@ -12,11 +12,13 @@ const ConfigSchema = z.object({
     url: z.string().default('redis://localhost:6379'),
   }),
 
-  // OpenAI
-  openai: z.object({
-    apiKey: z.string(),
-    defaultModel: z.string().default('gpt-4o'),
-    classificationModel: z.string().default('gpt-4o-mini'),
+  // VibeProxy (OpenAI-compatible API for Claude, Gemini, etc.)
+  vibeproxy: z.object({
+    baseUrl: z.string().default('http://localhost:8318/v1'),
+    apiKey: z.string().default('sk-vibeproxy-dummy'),
+    executionModel: z.string().default('gemini-claude-sonnet-4-5-thinking'),
+    classificationModel: z.string().default('gemini-2.0-flash-exp'),
+    reasoningModel: z.string().default('gemini-claude-opus-4-5-thinking'),
   }),
 
   // Tier Thresholds
@@ -60,10 +62,12 @@ function loadConfig(): Config {
     redis: {
       url: process.env['REDIS_URL'],
     },
-    openai: {
-      apiKey: process.env['OPENAI_API_KEY'] ?? '',
-      defaultModel: process.env['OPENAI_DEFAULT_MODEL'],
-      classificationModel: process.env['OPENAI_CLASSIFICATION_MODEL'],
+    vibeproxy: {
+      baseUrl: process.env['VIBEPROXY_BASE_URL'],
+      apiKey: process.env['VIBEPROXY_API_KEY'],
+      executionModel: process.env['VIBEPROXY_EXECUTION_MODEL'],
+      classificationModel: process.env['VIBEPROXY_CLASSIFICATION_MODEL'],
+      reasoningModel: process.env['VIBEPROXY_REASONING_MODEL'],
     },
     tiers: {
       t0ConfidenceThreshold: parseFloat(

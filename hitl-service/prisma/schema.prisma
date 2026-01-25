@@ -1,0 +1,307 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum TaskTier {
+  T0 // Fully automated (rules engine)
+  T1 // Auto-execute with async audit
+  T2 // Human approval required
+  T3 // Human-driven with AI assistance
+}
+
+enum TaskStatus {
+  PENDING
+  RUNNING
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  COMPLETED
+  FAILED
+  CANCELLED
+  ESCALATED
+}
+
+enum EscalationReason {
+  LOW_CONFIDENCE
+  HIGH_RISK
+  THRESHOLD_EXCEEDED
+  ANOMALY_DETECTED
+  POLICY_VIOLATION
+  MANUAL_REQUEST
+  TIMEOUT
+  ERROR
+}
+
+enum EscalationStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  DELEGATED
+  EXPIRED
+}
+
+enum ReviewerRole {
+  OPERATOR
+  SUPERVISOR
+  MANAGER
+  ADMIN
+  SYSTEM
+}
+
+enum DecisionType {
+  CLASSIFICATION
+  GENERATION
+  EXTRACTION
+  TOOL_CALL
+  ROUTING
+  ESCALATION
+}
+
+// =============================================================================
+// CORE TASK MODELS
+// =============================================================================
+
+model AITask {
+  id              String     @id @default(uuid()) @db.Uuid
+  externalId      String?    @unique @map("external_id")
+  tier            TaskTier   @default(T1)
+  status          TaskStatus @default(PENDING)
+  taskType        String     @map("task_type")
+  inputData       Json       @map("input_data") @db.JsonB
+  outputData      Json?      @map("output_data") @db.JsonB
+  confidenceScore Float?     @map("confidence_score")
+  riskScore       Float?     @map("risk_score")
+  metadata        Json?      @db.JsonB
+  errorMessage    String?    @map("error_message")
+  retryCount      Int        @default(0) @map("retry_count")
+  maxRetries      Int        @default(3) @map("max_retries")
+  parentTaskId    String?    @map("parent_task_id") @db.Uuid
+  templateId      String?    @map("template_id") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  startedAt       DateTime?  @map("started_at")
+  completedAt     DateTime?  @map("completed_at")
+  deadlineAt      DateTime?  @map("deadline_at")
+
+  parentTask   AITask?           @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
+  childTasks   AITask[]          @relation("TaskHierarchy")
+  template     AITaskTemplate?   @relation(fields: [templateId], references: [id])
+  checkpoints  AITaskCheckpoint[]
+  escalations  AITaskEscalation[]
+  decisions    AIDecisionLog[]
+  metrics      TaskMetric[]
+
+  @@index([tier, status])
+  @@index([taskType])
+  @@index([createdAt])
+  @@index([parentTaskId])
+  @@map("ai_tasks")
+}
+
+model AITaskTemplate {
+  id                    String   @id @default(uuid()) @db.Uuid
+  name                  String   @unique
+  description           String?
+  taskType              String   @map("task_type")
+  defaultTier           TaskTier @default(T1) @map("default_tier")
+  confidenceThreshold   Float    @default(0.85) @map("confidence_threshold")
+  riskThreshold         Float    @default(0.5) @map("risk_threshold")
+  escalationSlaMinutes  Int      @default(60) @map("escalation_sla_minutes")
+  maxRetries            Int      @default(3) @map("max_retries")
+  inputSchema           Json     @map("input_schema") @db.JsonB
+  outputSchema          Json     @map("output_schema") @db.JsonB
+  promptTemplate        String?  @map("prompt_template")
+  toolsConfig           Json?    @map("tools_config") @db.JsonB
+  isActive              Boolean  @default(true) @map("is_active")
+  version               Int      @default(1)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tasks AITask[]
+
+  @@index([taskType, isActive])
+  @@map("ai_task_templates")
+}
+
+model AITaskCheckpoint {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  nodeName    String   @map("node_name")
+  state       Json     @db.JsonB
+  metadata    Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  task AITask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("ai_task_checkpoints")
+}
+
+// =============================================================================
+// ESCALATION MODELS
+// =============================================================================
+
+model AITaskEscalation {
+  id              String           @id @default(uuid()) @db.Uuid
+  taskId          String           @map("task_id") @db.Uuid
+  reason          EscalationReason
+  status          EscalationStatus @default(PENDING)
+  priority        Int              @default(5)
+  aiRecommendation Json?           @map("ai_recommendation") @db.JsonB
+  contextData     Json?            @map("context_data") @db.JsonB
+  assignedTo      String?          @map("assigned_to") @db.Uuid
+  escalatedBy     String?          @map("escalated_by") @db.Uuid
+  slaDeadline     DateTime?        @map("sla_deadline")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  resolvedAt      DateTime?        @map("resolved_at")
+
+  task      AITask               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee  Reviewer?            @relation("AssignedEscalations", fields: [assignedTo], references: [id])
+  escalator Reviewer?            @relation("InitiatedEscalations", fields: [escalatedBy], references: [id])
+  reminders EscalationReminder[]
+  responses EscalationResponse[]
+
+  @@index([status, priority])
+  @@index([assignedTo, status])
+  @@index([slaDeadline])
+  @@map("ai_task_escalations")
+}
+
+model Reviewer {
+  id          String       @id @default(uuid()) @db.Uuid
+  externalId  String       @unique @map("external_id")
+  email       String       @unique
+  name        String
+  role        ReviewerRole @default(OPERATOR)
+  isActive    Boolean      @default(true) @map("is_active")
+  preferences Json?        @db.JsonB
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  assignedEscalations   AITaskEscalation[] @relation("AssignedEscalations")
+  initiatedEscalations  AITaskEscalation[] @relation("InitiatedEscalations")
+  responses             EscalationResponse[]
+
+  @@map("reviewers")
+}
+
+model EscalationReminder {
+  id           String   @id @default(uuid()) @db.Uuid
+  escalationId String   @map("escalation_id") @db.Uuid
+  sentAt       DateTime @default(now()) @map("sent_at")
+  channel      String   // email, slack, telegram
+  metadata     Json?    @db.JsonB
+
+  escalation AITaskEscalation @relation(fields: [escalationId], references: [id], onDelete: Cascade)
+
+  @@index([escalationId])
+  @@map("escalation_reminders")
+}
+
+model EscalationResponse {
+  id           String   @id @default(uuid()) @db.Uuid
+  escalationId String   @map("escalation_id") @db.Uuid
+  reviewerId   String   @map("reviewer_id") @db.Uuid
+  decision     String   // approve, reject, delegate, request_info
+  reasoning    String?
+  modifications Json?   @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  escalation AITaskEscalation @relation(fields: [escalationId], references: [id], onDelete: Cascade)
+  reviewer   Reviewer         @relation(fields: [reviewerId], references: [id])
+
+  @@index([escalationId])
+  @@map("escalation_responses")
+}
+
+// =============================================================================
+// AUDIT & DECISION LOGS
+// =============================================================================
+
+model AIDecisionLog {
+  id              String       @id @default(uuid()) @db.Uuid
+  taskId          String?      @map("task_id") @db.Uuid
+  decisionType    DecisionType @map("decision_type")
+  modelId         String       @map("model_id")
+  modelVersion    String?      @map("model_version")
+  inputTokens     Int          @map("input_tokens")
+  outputTokens    Int          @map("output_tokens")
+  latencyMs       Int          @map("latency_ms")
+  costUsd         Float?       @map("cost_usd")
+  prompt          String
+  response        String
+  confidenceScore Float?       @map("confidence_score")
+  metadata        Json?        @db.JsonB
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  task     AITask?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  contexts DecisionContext[]
+
+  @@index([taskId])
+  @@index([modelId, createdAt])
+  @@index([createdAt])
+  @@map("ai_decision_logs")
+}
+
+model DecisionContext {
+  id         String   @id @default(uuid()) @db.Uuid
+  decisionId String   @map("decision_id") @db.Uuid
+  contextKey String   @map("context_key")
+  content    String
+  embedding  Unsupported("vector(1536)")?
+  metadata   Json?    @db.JsonB
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  decision AIDecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+  @@index([contextKey])
+  @@map("decision_contexts")
+}
+
+// =============================================================================
+// METRICS & OBSERVABILITY
+// =============================================================================
+
+model TaskMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  metricName  String   @map("metric_name")
+  metricValue Float    @map("metric_value")
+  labels      Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  task AITask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([metricName, createdAt])
+  @@map("task_metrics")
+}
+
+model SystemHealthSnapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  autonomyRate      Float    @map("autonomy_rate")
+  escalationRate    Float    @map("escalation_rate")
+  avgLatencyMs      Float    @map("avg_latency_ms")
+  errorRate         Float    @map("error_rate")
+  activeTasksCount  Int      @map("active_tasks_count")
+  pendingEscalations Int     @map("pending_escalations")
+  totalCostUsd      Float    @map("total_cost_usd")
+  metadata          Json?    @db.JsonB
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("system_health_snapshots")
+}
